@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
-    <title>실시간 분반 루미큐브 등록 규칙 적용</title>
+    <title>실시간 분반 루미큐브 규칙 완전 검증 Pro</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { 
@@ -79,9 +79,8 @@
                 <strong>현재 접속자 명단:</strong>
                 <div id="memberListItems" style="margin-top: 5px; color: #3498db;"></div>
             </div>
-            <!-- 버튼 표출 스크립트 오타 완전히 교정 완료 -->
             <button id="startBtn" class="green-btn" style="width: 100%; display: none;" onclick="startGame()">게임 시작하기</button>
-            <p id="masterNotice" style="font-size:12px; color:#bdc3c7; margin-top:10px;">모둠장(첫 번째 입장객)만 시작할 수 있습니다.</p>
+            <p id="masterNotice" style="font-size:12px; color:#bdc3c7; margin-top:10px;">모둠장만 시작할 수 있습니다.</p>
         </div>
     </div>
 
@@ -134,7 +133,7 @@
                 memberListItems.innerHTML = gameState.players.map((p, idx) => `${idx+1}. ${p.name}`).join('<br>');
                 
                 if (gameState.players[0] && gameState.players[0].id === myId) {
-                    document.getElementById('startBtn').style.display = 'block'; // 오타 교정
+                    document.getElementById('startBtn').style.display = 'block';
                     document.getElementById('masterNotice').style.display = 'none';
                 }
                 return;
@@ -154,17 +153,12 @@
                 }
             }
 
-            // 등록 상태 레이블 칩 현황판에 반영
             const playerBoard = document.getElementById('playerBoard');
             playerBoard.innerHTML = '';
             gameState.players.forEach(p => {
                 const pCard = document.createElement('div');
                 pCard.className = `player-card ${currentTurnPlayer && currentTurnPlayer.id === p.id ? 'active-turn' : ''}`;
-                
-                const meldStatus = p.isMeldDone 
-                    ? '<span class="meld-tag meld-true">등록 완료</span>' 
-                    : '<span class="meld-tag meld-false">미등록</span>';
-
+                const meldStatus = p.isMeldDone ? '<span class="meld-tag meld-true">등록 완료</span>' : '<span class="meld-tag meld-false">미등록</span>';
                 pCard.innerHTML = `${p.id === myId ? '★나' : p.name}: <span class="tile-count">${p.hand.length}장</span> ${meldStatus}`;
                 playerBoard.appendChild(pCard);
             });
@@ -179,9 +173,7 @@
                 groupDiv.addEventListener('dragover', allowDrop);
                 groupDiv.addEventListener('drop', (e) => dropToBoard(e, gIdx));
                 
-                group.forEach(tile => {
-                    groupDiv.appendChild(createTileElement(tile));
-                });
+                group.forEach(tile => { groupDiv.appendChild(createTileElement(tile)); });
                 boardContainer.appendChild(groupDiv);
             });
 
@@ -211,10 +203,9 @@
                 localHand.sort((a, b) => {
                     if (a.isJoker) return 1;
                     if (b.isJoker) return -1;
-                    return a.color.localeCompare(b.color) || a.number - b.number;
+                    return a.color.color.localeCompare(b.color) || a.number - b.number;
                 });
             }
-            
             const handDiv = document.getElementById('hand');
             handDiv.innerHTML = '';
             localHand.forEach(tile => { handDiv.appendChild(createTileElement(tile)); });
@@ -259,13 +250,11 @@
 
         function bindTouchEvents(tileEl) {
             let startX, startY;
-
             tileEl.addEventListener('touchstart', function(e) {
                 if(!isMyTurn) return;
                 if (e.cancelable) e.preventDefault();
                 const touch = e.touches[0];
-                startX = touch.clientX;
-                startY = touch.clientY;
+                startX = touch.clientX; startY = touch.clientY;
                 tileEl.style.zIndex = 1000;
             }, { passive: false });
 
@@ -279,11 +268,8 @@
             tileEl.addEventListener('touchend', function(e) {
                 if(!isMyTurn) return;
                 const touch = e.changedTouches[0];
-                tileEl.style.zIndex = '';
-                tileEl.style.transform = '';
-
-                const x = touch.clientX;
-                const y = touch.clientY;
+                tileEl.style.zIndex = ''; tileEl.style.transform = '';
+                const x = touch.clientX; const y = touch.clientY;
 
                 const handEl = document.getElementById('hand');
                 const handRect = handEl.getBoundingClientRect();
@@ -305,6 +291,8 @@
         }
         
         socket.on('errorMsg', (msg) => { alert(msg); });
+        // 누군가 패를 다 털어 이겼을 때 전체 축하 메시지 수신
+        socket.on('victory', (winner) => { alert(`🎉 축하합니다! [${winner}] 학생이 손패를 모두 털어 최종 승리했습니다!`); window.location.reload(); });
     </script>
 </body>
 </html>
