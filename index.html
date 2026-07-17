@@ -3,83 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
-    <title>실시간 교실 루미큐브 (모바일 지원)</title>
+    <title>실시간 교실 루미큐브 Pro (조커 포함)</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { 
-            font-family: sans-serif; 
-            background: #2c3e50; 
-            color: white; 
-            padding: 10px; 
-            text-align: center; 
-            margin: 0;
-            overflow-x: hidden;
-            touch-action: manipulation; /* 모바일 더블탭 줌 방지 */
+            font-family: sans-serif; background: #2c3e50; color: white; padding: 10px; text-align: center; margin: 0;
+            overflow-x: hidden; touch-action: manipulation;
         }
-        h1 { font-size: 20px; margin: 10px 0; }
-        .grid-container, .hand-container { 
-            background: #1a252f; 
-            border: 2px solid #ccc; 
-            min-height: 120px; 
-            margin: 10px 5px; 
-            padding: 10px; 
-            display: flex; 
-            flex-wrap: wrap; 
-            gap: 8px; 
-            border-radius: 8px;
-            box-sizing: border-box;
+        h1 { font-size: 20px; margin: 5px 0; }
+        .controls { margin: 10px 0; display: flex; justify-content: center; flex-wrap: wrap; gap: 5px; }
+        button {
+            padding: 8px 14px; font-size: 14px; font-weight: bold; background: #e67e22; border: none; color: white; border-radius: 5px; cursor: pointer;
         }
+        button.blue-btn { background: #3498db; }
+        button.green-btn { background: #2ecc71; }
+        
+        /* 공용 보드 대형 컨테이너 */
+        .board-container {
+            background: #1a252f; border: 3px dashed #7f8c8d; min-height: 200px; margin: 10px 5px; padding: 15px;
+            display: flex; flex-direction: column; gap: 15px; border-radius: 8px; box-sizing: border-box;
+        }
+        
+        /* 타일 묶음(조합)별 분리 구역 */
+        .tile-group {
+            background: #2c3e50; border: 2px solid #bdc3c7; min-height: 75px; padding: 8px;
+            display: flex; flex-wrap: wrap; gap: 6px; border-radius: 6px; position: relative;
+        }
+        .tile-group::before {
+            content: "조합 세트"; position: absolute; top: -8px; left: 10px; background: #bdc3c7; color: #2c3e50;
+            font-size: 10px; font-weight: bold; padding: 1px 5px; border-radius: 3px;
+        }
+
+        /* 내 손패 컨테이너 */
+        .hand-container { 
+            background: #2c3e50; border: 3px solid #ccc; min-height: 100px; margin: 10px 5px; padding: 10px; 
+            display: flex; flex-wrap: wrap; gap: 8px; border-radius: 8px; box-sizing: border-box;
+        }
+        
+        /* 타일 스타일 */
         .tile { 
-            width: 42px; 
-            height: 55px; 
-            background: white; 
-            border-radius: 5px; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            font-size: 18px; 
-            font-weight: bold; 
-            color: black; 
-            cursor: grab;
-            position: relative;
-            touch-action: none; /* 모바일에서 브라우저 스크롤 막고 터치 이동 허용 */
-            user-select: none;
-            box-shadow: 1px 2px 3px rgba(0,0,0,0.3);
+            width: 40px; height: 52px; background: #f5f6fa; border-radius: 5px; display: flex; 
+            justify-content: center; align-items: center; font-size: 18px; font-weight: bold; color: black; 
+            cursor: grab; position: relative; touch-action: none; user-select: none;
+            box-shadow: 2px 3px 4px rgba(0,0,0,0.4);
         }
         .red { color: #e74c3c; } 
         .blue { color: #3498db; } 
-        .yellow { color: #f1c40f; } 
+        .yellow { color: #f39c12; } 
         .black { color: #2c3e50; }
-        .turn-indicator { font-size: 16px; color: #2ecc71; margin: 10px; font-weight: bold; }
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-            font-weight: bold;
-            background: #e67e22;
-            border: none;
-            color: white;
-            border-radius: 5px;
-            cursor: pointer;
-        }
+        /* 조커 카드 독자 디자인 */
+        .joker { color: #8e44ad; background: #f1f2f6; border: 2px solid #8e44ad; } 
+        
+        .turn-indicator { font-size: 15px; color: #2ecc71; margin: 5px; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <h1>🎮 실시간 교실 루미큐브</h1>
-    <div id="turnMessage" class="turn-indicator">게임 참여 대기 중...</div>
-    <button onclick="endTurn()">턴 마치기</button>
+    <h1>🧩 실시간 교실 루미큐브 Pro</h1>
+    <div id="turnMessage" class="turn-indicator">참가 중...</div>
+    
+    <div class="controls">
+        <button class="green-btn" onclick="socket.emit('drawTile')">타일 1장 뽑기</button>
+        <button class="blue-btn" onclick="socket.emit('createNewGroup')">+ 새 조합 칸 만들기</button>
+        <button onclick="sortHand('number')">숫자별 정렬</button>
+        <button onclick="sortHand('color')">색상별 정렬</button>
+        <button class="green-btn" onclick="socket.emit('endTurn')">턴 마치기</button>
+    </div>
 
-    <h3>공용 보드 구역</h3>
-    <div id="board" class="grid-container" ondragover="allowDrop(event)" ondrop="drop(event)"></div>
+    <h3>공용 보드 구역 (타일을 조합 세트 칸에 넣으세요)</h3>
+    <div id="boardContainer" class="board-container" ondragover="allowDrop(event)"></div>
 
-    <h3>내 손패</h3>
-    <div id="hand" class="hand-container"></div>
+    <h3>내 손패 (보드의 카드를 여기로 다시 끌어올 수 있습니다)</h3>
+    <div id="hand" class="hand-container" ondragover="allowDrop(event)" ondrop="dropToHand(event)"></div>
 
     <script>
         const socket = io(); 
         let myId = null;
+        let localHand = []; 
+        let currentSortType = null;
 
-        // 접속 시 이름 입력
         const userName = prompt("학급에서 사용할 이름을 입력하세요:", "학생" + Math.floor(Math.random()*100));
         socket.emit('joinGame', userName);
 
@@ -90,95 +92,131 @@
             const currentTurnPlayer = gameState.players[gameState.currentTurn];
             
             if (currentTurnPlayer) {
-                if (currentTurnPlayer.id === myId) {
-                    document.getElementById('turnMessage').innerText = "🔴 내 차례입니다! 타일을 놓으세요.";
-                } else {
-                    document.getElementById('turnMessage').innerText = `• ${currentTurnPlayer.name}의 차례를 기다리는 중...`;
-                }
+                document.getElementById('turnMessage').innerText = 
+                    currentTurnPlayer.id === myId ? "🔴 내 차례입니다! 타일을 조작하세요." : `• ${currentTurnPlayer.name}의 차례 대기 중...`;
             }
 
-            // 보드 그리기
-            const boardDiv = document.getElementById('board');
-            boardDiv.innerHTML = '';
-            gameState.boardTiles.forEach(tile => {
-                boardDiv.appendChild(createTileElement(tile, false));
+            const boardContainer = document.getElementById('boardContainer');
+            boardContainer.innerHTML = '';
+            
+            gameState.boardGroups.forEach((group, gIdx) => {
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'tile-group';
+                groupDiv.dataset.groupIndex = gIdx;
+                groupDiv.addEventListener('dragover', allowDrop);
+                groupDiv.addEventListener('drop', (e) => dropToBoard(e, gIdx));
+                
+                group.forEach(tile => {
+                    groupDiv.appendChild(createTileElement(tile));
+                });
+                boardContainer.appendChild(groupDiv);
             });
 
-            // 내 패 그리기
-            const handDiv = document.getElementById('hand');
-            handDiv.innerHTML = '';
             if (me) {
-                me.hand.forEach(tile => {
-                    handDiv.appendChild(createTileElement(tile, true));
-                });
+                localHand = me.hand;
+                applySort(); 
             }
         });
 
-        function createTileElement(tile, isDraggable) {
+        function sortHand(type) {
+            currentSortType = type;
+            applySort();
+        }
+
+        // 정렬 시 조커(isJoker)는 맨 뒤로 정렬되도록 로직 수정
+        function applySort() {
+            if (currentSortType === 'number') {
+                localHand.sort((a, b) => {
+                    if (a.isJoker) return 1;
+                    if (b.isJoker) return -1;
+                    return a.number - b.number || a.color.localeCompare(b.color);
+                });
+            } else if (currentSortType === 'color') {
+                localHand.sort((a, b) => {
+                    if (a.isJoker) return 1;
+                    if (b.isJoker) return -1;
+                    return a.color.localeCompare(b.color) || a.number - b.number;
+                });
+            }
+            
+            const handDiv = document.getElementById('hand');
+            handDiv.innerHTML = '';
+            localHand.forEach(tile => {
+                handDiv.appendChild(createTileElement(tile));
+            });
+        }
+
+        function createTileElement(tile) {
             const el = document.createElement('div');
-            el.className = `tile ${tile.color}`;
+            // 조커일 경우 전용 클래스 부여
+            el.className = `tile ${tile.isJoker ? 'joker' : tile.color}`;
             el.innerText = tile.number;
             el.id = tile.id;
+            el.draggable = true;
             
-            if (isDraggable) {
-                el.draggable = true;
-                
-                // PC 마우스 드래그 이벤트
-                el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text', tile.id); });
-
-                // 스마트폰 모바일 터치 이벤트 바인딩
-                bindTouchEvents(el);
-            }
+            el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text', tile.id); });
+            bindTouchEvents(el);
             return el;
         }
 
-        // 모바일 터치 이동 핵심 로직
+        function allowDrop(e) { e.preventDefault(); }
+
+        function dropToBoard(e, gIdx) {
+            e.preventDefault();
+            e.stopPropagation();
+            const tileId = e.dataTransfer.getData('text');
+            socket.emit('moveTile', { tileId, toZone: 'board', groupIndex: gIdx });
+        }
+
+        function dropToHand(e) {
+            e.preventDefault();
+            const tileId = e.dataTransfer.getData('text');
+            socket.emit('moveTile', { tileId, toZone: 'hand' });
+        }
+
         function bindTouchEvents(tileEl) {
             let startX, startY;
 
             tileEl.addEventListener('touchstart', function(e) {
+                if (e.cancelable) e.preventDefault();
                 const touch = e.touches[0];
                 startX = touch.clientX;
                 startY = touch.clientY;
-                tileEl.style.zIndex = 1000; // 맨 위로 띄우기
-            }, { passive: true });
+                tileEl.style.zIndex = 1000;
+            }, { passive: false });
 
             tileEl.addEventListener('touchmove', function(e) {
+                if (e.cancelable) e.preventDefault();
                 const touch = e.touches[0];
-                // 손가락 따라 실시간 위치 이동 가시화
                 tileEl.style.transform = `translate(${touch.clientX - startX}px, ${touch.clientY - startY}px)`;
-            }, { passive: true });
+            }, { passive: false });
 
             tileEl.addEventListener('touchend', function(e) {
                 const touch = e.changedTouches[0];
                 tileEl.style.zIndex = '';
                 tileEl.style.transform = '';
 
-                // 터치가 끝난 지점에 공용 보드가 있는지 판별
-                const boardEl = document.getElementById('board');
-                const boardRect = boardEl.getBoundingClientRect();
+                const x = touch.clientX;
+                const y = touch.clientY;
 
-                // 손가락 뗀 위치가 공용 보드 박스 안쪽이라면
-                if (touch.clientX >= boardRect.left && touch.clientX <= boardRect.right &&
-                    touch.clientY >= boardRect.top && touch.clientY <= boardRect.bottom) {
-                    
-                    // 서버로 타일 이동 요청 전송
-                    socket.emit('moveTileToBoard', { tileId: tileEl.id });
+                const handEl = document.getElementById('hand');
+                const handRect = handEl.getBoundingClientRect();
+                if (x >= handRect.left && x <= handRect.right && y >= handRect.top && y <= handRect.bottom) {
+                    socket.emit('moveTile', { tileId: tileEl.id, toZone: 'hand' });
+                    return;
+                }
+
+                const groups = document.querySelectorAll('.tile-group');
+                for (let groupDiv of groups) {
+                    const rect = groupDiv.getBoundingClientRect();
+                    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+                        const gIdx = groupDiv.dataset.groupIndex;
+                        socket.emit('moveTile', { tileId: tileEl.id, toZone: 'board', groupIndex: gIdx });
+                        break;
+                    }
                 }
             });
         }
-
-        function allowDrop(e) { e.preventDefault(); }
-
-        // PC 마우스 드롭
-        function drop(e) {
-            e.preventDefault();
-            const tileId = e.dataTransfer.getData('text');
-            socket.emit('moveTileToBoard', { tileId });
-        }
-
-        function endTurn() { socket.emit('endTurn'); }
-        socket.on('errorMsg', (msg) => { alert(msg); });
     </script>
 </body>
 </html>
