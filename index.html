@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
-    <title>실시간 분반 루미큐브 규칙 완전 검증 Pro</title>
+    <title>실시간 분반 루미큐브 Pro (레이아웃 개선)</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { 
@@ -31,14 +31,16 @@
         .meld-true { background: #3498db; color: white; }
         .meld-false { background: #e74c3c; color: white; }
 
+        /* [개선] 세로 배치에서 바둑판 모양 격자(Grid Flex) 배치로 변경 */
         .board-container {
-            background: #1a252f; border: 3px dashed #7f8c8d; min-height: 200px; margin: 10px 5px; padding: 15px;
-            display: flex; flex-direction: column; gap: 15px; border-radius: 8px; box-sizing: border-box;
+            background: #1a252f; border: 3px dashed #7f8c8d; min-height: 250px; margin: 10px 5px; padding: 15px;
+            display: flex; flex-direction: row; flex-wrap: wrap; align-content: flex-start; gap: 15px; border-radius: 8px; box-sizing: border-box;
         }
         
+        /* [개선] 가로 너비를 줘서 한 줄에 여러 개 배치되도록 조절 */
         .tile-group {
-            background: #2c3e50; border: 2px solid #bdc3c7; min-height: 75px; padding: 8px;
-            display: flex; flex-wrap: wrap; gap: 6px; border-radius: 6px; position: relative;
+            background: #2c3e50; border: 2px solid #bdc3c7; min-height: 75px; min-width: 160px; max-width: 230px; padding: 12px 8px 8px 8px;
+            display: flex; flex-wrap: wrap; gap: 6px; border-radius: 6px; position: relative; flex-grow: 1; box-sizing: border-box;
         }
         .tile-group::before {
             content: "조합 세트"; position: absolute; top: -8px; left: 10px; background: #bdc3c7; color: #2c3e50;
@@ -51,8 +53,8 @@
         }
         
         .tile { 
-            width: 40px; height: 52px; background: #f5f6fa; border-radius: 5px; display: flex; 
-            justify-content: center; align-items: center; font-size: 18px; font-weight: bold; color: black; 
+            width: 36px; height: 48px; background: #f5f6fa; border-radius: 5px; display: flex; 
+            justify-content: center; align-items: center; font-size: 16px; font-weight: bold; color: black; 
             cursor: grab; position: relative; touch-action: none; user-select: none;
             box-shadow: 2px 3px 4px rgba(0,0,0,0.4);
         }
@@ -200,10 +202,11 @@
                     return a.number - b.number || a.color.localeCompare(b.color);
                 });
             } else if (currentSortType === 'color') {
+                // [오타 수정 완료] 중복된 .color 객체 접근을 지워 정상 작동하게 만들었습니다.
                 localHand.sort((a, b) => {
                     if (a.isJoker) return 1;
                     if (b.isJoker) return -1;
-                    return a.color.color.localeCompare(b.color) || a.number - b.number;
+                    return a.color.localeCompare(b.color) || a.number - b.number;
                 });
             }
             const handDiv = document.getElementById('hand');
@@ -291,7 +294,6 @@
         }
         
         socket.on('errorMsg', (msg) => { alert(msg); });
-        // 누군가 패를 다 털어 이겼을 때 전체 축하 메시지 수신
         socket.on('victory', (winner) => { alert(`🎉 축하합니다! [${winner}] 학생이 손패를 모두 털어 최종 승리했습니다!`); window.location.reload(); });
     </script>
 </body>
