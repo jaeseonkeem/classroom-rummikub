@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>실시간 멀티플레이 루미큐브</title>
+    <!-- Socket.io 라이브러리 로드 -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        /* 기존 UI 스타일 유지 */
+        body { font-family: sans-serif; background: #2c3e50; color: white; padding: 20px; text-align: center; }
+        .grid-container, .hand-container { background: #1a252f; border: 2px solid #ccc; min-height: 150px; margin: 10px; padding: 15px; display: flex; flex-wrap: wrap; gap: 10px; border-radius: 8px;}
+        .tile { width: 45px; height: 60px; background: white; border-radius: 5px; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: black; cursor: grab;}
+        .red { color: #e74c3c; } .blue { color: #3498db; } .yellow { color: #f1c40f; } .black { color: #2c3e50; }
+        .turn-indicator { font-size: 20px; color: #2ecc71; margin: 10px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>🎮 실시간 교실 루미큐브 (2~4인용)</h1>
+    <div id="turnMessage" class="turn-indicator">게임 참여 대기 중...</div>
+    <button onclick="endTurn()">턴 마치기</button>
+
+    <h3>공용 보드 구역</h3>
+    <div id="board" class="grid-container" ondragover="allowDrop(event)" ondrop="drop(event)"></div>
+
+    <h3>내 손패</h3>
+    <div id="hand" class="hand-container"></div>
+
+    <script>
+        // 학교 서버 IP 혹은 실행 중인 서버 주소 입력 (예시: localhost)
+        const socket = io('http://localhost:3000'); 
+        let myId = null;
+
+        // 1. 접속하자마자 학생 이름 입력받아 참가
+        const userName = prompt("학급에서 사용할 이름을 입력하세요:", "학생" + Math.floor(Math.random()*100));
+        socket.emit('joinGame', userName);
+
+        socket.on('connect', () => { myId = socket.id; });
+
+        // 2. 서버가 게임 상태를 업데이트해줄 때마다 화면 새로고침
+        socket.on('updateGame', (gameState) => {
+            const me = gameState.players.find(p => p.id === myId);
+            const currentTurnPlayer = gameState.players[gameState.currentTurn];
+            
+            // 현재 턴 표시
+            if (currentTurnPlayer) {
+                if (currentTurnPlayer.id === myId) {
+                    document.getElementById('turnMessage').innerText = "🔴 내 차례입니다! 타일을 놓으세요.";
+                } else {
+                    document.getElementById('turnMessage').innerText = `• ${currentTurnPlayer.name}의 차례를 기다리는 중...`;
+                }
+            }
+
+            // 공용 보드 그리기
+            const boardDiv = document.getElementById('board');
+            boardDiv.innerHTML = '';
+            gameState.boardTiles.forEach(tile => {
+                boardDiv.appendChild(createTileElement(tile, false));
+            });
+
+            // 내 손패만 그리기
+            const handDiv = document.getElementById('hand');
+            handDiv.innerHTML = '';
+            if (me) {
+                me.hand.forEach(tile => {
+                    handDiv.appendChild(createTileElement(tile, true));
+                });
+            }
+        });
+
+        function createTileElement(tile, isDraggable) {
+            const el = document.createElement('div');
+            el.className = `tile ${tile.color}`;
+            el.innerText = tile.number;
+            if (isDraggable) {
+                el.draggable = true;
+                el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text', tile.id); });
+            }
+            return el;
+        }
+
+        function allowDrop(e) { e.preventDefault(); }
+
+        // 내 패에서 보드로 드래그 드롭했을 때 서버에 알림
+        function drop(e) {
+            e.preventDefault();
+            const tileId = e.dataTransfer.getData('text');
+            socket.emit('moveTileToBoard', { tileId });
+        }
+
+        // 턴 종료 버튼 클릭 시
+        function endTurn() {
+            socket.emit('endTurn');
+        }
+
+        socket.on('errorMsg', (msg) => { alert(msg); });
+    </script>
+</body>
+</html>
