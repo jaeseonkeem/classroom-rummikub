@@ -7,7 +7,6 @@ const path = require('path');
 app.use(express.static(path.join(__dirname)));
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
 
-// 여러 개의 방(모둠) 상태를 담을 저장소
 let rooms = {};
 
 function initDeck() {
@@ -25,56 +24,87 @@ function initDeck() {
     return pool.sort(() => Math.random() - 0.5);
 }
 
-// 새로운 모둠 데이터 세팅 템플릿
 function createNewRoomState() {
     return {
         players: [],
         boardGroups: [[]],
         tilePool: initDeck(),
-        currentTurn: 0
+        currentTurn: 0,
+        status: 'waiting' // waiting(대기중) 또는 playing(게임중)
     };
 }
 
 io.on('connection', (socket) => {
-    let myRoom = null; // 이 소켓(학생)이 들어간 방 이름 저장용
+    let myRoom = null;
 
-    // 학생들이 이름과 방 번호를 가지고 입장할 때
     socket.on('joinGame', ({ name, roomId }) => {
         const roomName = `room-${roomId}`;
         myRoom = roomName;
 
-        // 해당 모둠 방이 서버에 아직 없으면 새로 개설
         if (!rooms[roomName]) {
             rooms[roomName] = createNewRoomState();
         }
 
         let gameState = rooms[roomName];
 
-        if (gameState.players.length >= 4) {
-            socket.emit('errorMsg', '해당 모둠방이 가득 찼습니다. 다른 번호를 선택하세요.');
+        if (gameState.status === 'playing') {
+            socket.emit('errorMsg', '이미 게임이 시작된 모둠방입니다.');
             return;
         }
 
-        // Socket.io의 핵심 기능: 이 학생을 특정 '방구역'에 조인시킴
-        socket.join(roomName);
-
-        let hand = [];
-        for (let i = 0; i < 14; i++) {
-            if (gameState.tilePool.length > 0) hand.push(gameState.tilePool.pop());
+        if (gameState.players.length >= 4) {
+            socket.emit('errorMsg', '해당 모둠방이 가득 찼습니다.');
+            return;
         }
 
-        gameState.players.push({ id: socket.id, name: name, hand: hand });
+        socket.join(roomName);
         
-        // ★ 중요: io.to(roomName)을 써서 '같은 방'에 있는 친구들에게만 데이터 브로드캐스팅
+        // 대기실 입장 시에는 패를 주지 않고 유저 정보만 등록
+        gameState.players.push({ id: socket.id, name: name, hand: [] });
         io.to(roomName).emit('updateGame', gameState);
+    });
+
+    // [룰 1] 방장의 게임 시작 요청 처리
+    socket.on('gameStart', () => {
+        if (!myRoom || !rooms[myRoom]) return;
+        let gameState = rooms[myRoom];
+
+        // 가장 먼저 들어온 방장만 시작 가능무
+        if (gameState.players[0].id !== socket.id) return;
+
+        if (gameState.status === 'waiting') {
+            gameState.status = 'playing';
+            gameState.tilePool = initDeck(); // 시작할 때 덱 셔플
+            gameState.boardGroups = [[]];
+
+            // 모든 참여자에게 14장씩 카드 배분
+            gameState.players.forEach(player => {
+                player.hand = [];
+                for (let i = 0; i < 14; i++) {
+                    if (gameState.tilePool.length > 0) player.hand.push(gameState.tilePool.pop());
+                }
+            });
+
+            io.to(myRoom).emit('updateGame', gameState);
+        }
     });
 
     socket.on('drawTile', () => {
         if (!myRoom || !rooms[myRoom]) return;
         let gameState = rooms[myRoom];
+        
+        // 내 턴 제어 검증
+        let currentPlayer = gameState.players[gameState.currentTurn];
+        if (!currentPlayer || currentPlayer.id !== socket.id) {
+            socket.emit('errorMsg', '내 차례가 아닙니다!');
+            return;
+        }
+
         let player = gameState.players.find(p => p.id === socket.id);
         if (player && gameState.tilePool.length > 0) {
             player.hand.push(gameState.tilePool.pop());
+            // 타일을 한 장 뽑으면 자동으로 턴을 넘겨 루미큐브 룰 적용
+            gameState.currentTurn = (gameState.currentTurn + 1) % gameState.players.length;
             io.to(myRoom).emit('updateGame', gameState);
         }
     });
@@ -82,13 +112,29 @@ io.on('connection', (socket) => {
     socket.on('createNewGroup', () => {
         if (!myRoom || !rooms[myRoom]) return;
         let gameState = rooms[myRoom];
+        
+        let currentPlayer = gameState.players[gameState.currentTurn];
+        if (!currentPlayer || currentPlayer.id !== socket.id) {
+            socket.emit('errorMsg', '내 차례가 아닙니다!');
+            return;
+        }
+
         gameState.boardGroups.push([]);
         io.to(myRoom).emit('updateGame', gameState);
     });
 
+    // [룰 2] 내 턴일 때만 타일 이동 조작 허용
     socket.on('moveTile', ({ tileId, toZone, groupIndex }) => {
         if (!myRoom || !rooms[myRoom]) return;
         let gameState = rooms[myRoom];
+        
+        // 현재 차례인 사람의 ID가 내 ID와 다르면 조작 차단
+        let currentPlayer = gameState.players[gameState.currentTurn];
+        if (!currentPlayer || currentPlayer.id !== socket.id || gameState.status !== 'playing') {
+            socket.emit('errorMsg', '내 차례가 아닙니다! 타일을 움직일 수 없습니다.');
+            return;
+        }
+
         let player = gameState.players.find(p => p.id === socket.id);
         if (!player) return;
 
@@ -128,6 +174,13 @@ io.on('connection', (socket) => {
     socket.on('endTurn', () => {
         if (!myRoom || !rooms[myRoom]) return;
         let gameState = rooms[myRoom];
+        
+        let currentPlayer = gameState.players[gameState.currentTurn];
+        if (!currentPlayer || currentPlayer.id !== socket.id) {
+            socket.emit('errorMsg', '내 차례가 아닙니다!');
+            return;
+        }
+
         if (gameState.players.length > 0) {
             gameState.currentTurn = (gameState.currentTurn + 1) % gameState.players.length;
             io.to(myRoom).emit('updateGame', gameState);
@@ -138,8 +191,6 @@ io.on('connection', (socket) => {
         if (myRoom && rooms[myRoom]) {
             let gameState = rooms[myRoom];
             gameState.players = gameState.players.filter(p => p.id !== socket.id);
-            
-            // 모둠에 아무도 남지 않으면 메모리 확보를 위해 방 폭파
             if (gameState.players.length === 0) {
                 delete rooms[myRoom];
             } else {

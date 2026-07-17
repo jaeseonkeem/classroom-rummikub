@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
-    <title>실시간 분반 루미큐브 Pro</title>
+    <title>실시간 분반 루미큐브 룰 적용</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { 
@@ -16,9 +16,19 @@
         button {
             padding: 8px 14px; font-size: 14px; font-weight: bold; background: #e67e22; border: none; color: white; border-radius: 5px; cursor: pointer;
         }
+        button:disabled { background: #7f8c8d !important; cursor: not-allowed; }
         button.blue-btn { background: #3498db; }
         button.green-btn { background: #2ecc71; }
         
+        /* [문제 3 해결] 플레이어 현황판 스코어보드 디자인 */
+        .player-status-board {
+            background: #34495e; padding: 10px; border-radius: 6px; margin: 10px auto; max-width: 600px;
+            display: flex; justify-content: space-around; flex-wrap: wrap; gap: 10px; font-size: 14px; border: 1px solid #7f8c8d;
+        }
+        .player-card { padding: 4px 10px; border-radius: 4px; background: #2c3e50; }
+        .player-card.active-turn { border: 2px solid #2ecc71; background: #16a085; }
+        .tile-count { font-weight: bold; color: #f1c40f; }
+
         .board-container {
             background: #1a252f; border: 3px dashed #7f8c8d; min-height: 200px; margin: 10px 5px; padding: 15px;
             display: flex; flex-direction: column; gap: 15px; border-radius: 8px; box-sizing: border-box;
@@ -47,20 +57,45 @@
         .red { color: #e74c3c; } .blue { color: #3498db; } .yellow { color: #f39c12; } .black { color: #2c3e50; }
         .joker { color: #8e44ad; background: #f1f2f6; border: 2px solid #8e44ad; } 
         
-        .turn-indicator { font-size: 15px; color: #2ecc71; margin: 5px; font-weight: bold; }
+        .turn-indicator { font-size: 16px; color: #2ecc71; margin: 5px; font-weight: bold; }
+        
+        /* 대기실 화면 마스킹 레이어 */
+        .waiting-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(44, 62, 80, 0.95);
+            display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 5000;
+        }
+        .waiting-box { background: #1a252f; padding: 30px; border-radius: 10px; border: 2px solid #ccc; width: 80%; max-width: 400px;}
+        .member-list { margin: 20px 0; text-align: left; background: #2c3e50; padding: 10px; border-radius: 5px;}
     </style>
 </head>
 <body>
 
+    <!-- [룰 1] 대기실 UI 영역 -->
+    <div id="waitingScreen" class="waiting-overlay">
+        <div class="waiting-box">
+            <h2>⏳ <span id="waitRoomTitle"></span> 대기실</h2>
+            <p>모둠원들이 접속할 때까지 기다려주세요.</p>
+            <div class="member-list">
+                <strong>현재 접속자 명단:</strong>
+                <div id="memberListItems" style="margin-top: 5px; color: #3498db;"></div>
+            </div>
+            <button id="startBtn" class="green-btn" style="width: 100%; display: none;" onclick="startGame()">게임 시작하기</button>
+            <p id="masterNotice" style="font-size:12px; color:#bdc3c7; margin-top:10px;">모둠장(첫 번째 입장객)만 시작할 수 있습니다.</p>
+        </div>
+    </div>
+
     <h1>🧩 실시간 학급 루미큐브 <span id="roomTitle" class="room-tag">대기 중</span></h1>
+    
+    <!-- [룰 3] 타일 개수 모니터링 현황판 -->
+    <div id="playerBoard" class="player-status-board"></div>
     <div id="turnMessage" class="turn-indicator">참가 중...</div>
     
     <div class="controls">
-        <button class="green-btn" onclick="socket.emit('drawTile')">타일 1장 뽑기</button>
-        <button class="blue-btn" onclick="socket.emit('createNewGroup')">+ 새 조합 칸 만들기</button>
+        <button id="drawBtn" class="green-btn" onclick="socket.emit('drawTile')">타일 1장 뽑기</button>
+        <button id="groupBtn" class="blue-btn" onclick="socket.emit('createNewGroup')">+ 새 조합 칸 만들기</button>
         <button onclick="sortHand('number')">숫자별 정렬</button>
         <button onclick="sortHand('color')">색상별 정렬</button>
-        <button class="green-btn" onclick="socket.emit('endTurn')">턴 마치기</button>
+        <button id="endTurnBtn" class="green-btn" onclick="socket.emit('endTurn')">턴 마치기</button>
     </div>
 
     <h3>공용 보드 구역</h3>
@@ -74,8 +109,8 @@
         let myId = null;
         let localHand = []; 
         let currentSortType = null;
+        let isMyTurn = false; // [룰 2] 클라이언트 제어 플래그
 
-        // 이름과 모둠 번호 입력창
         const userName = prompt("학급에서 사용할 이름을 입력하세요:", "학생" + Math.floor(Math.random()*100));
         let userRoom = prompt("참가할 모둠 번호를 입력하세요 (1~10):", "1");
         
@@ -83,6 +118,7 @@
         if (isNaN(userRoom) || userRoom < 1) userRoom = 1;
 
         document.getElementById('roomTitle').innerText = `${userRoom}모둠`;
+        document.getElementById('waitRoomTitle').innerText = `${userRoom}모둠`;
 
         socket.emit('joinGame', { name: userName, roomId: userRoom });
 
@@ -92,11 +128,49 @@
             const me = gameState.players.find(p => p.id === myId);
             const currentTurnPlayer = gameState.players[gameState.currentTurn];
             
-            if (currentTurnPlayer) {
-                document.getElementById('turnMessage').innerText = 
-                    currentTurnPlayer.id === myId ? "🔴 내 차례입니다! 타일을 조작하세요." : `• ${currentTurnPlayer.name}의 차례 대기 중...`;
+            // 1. 대기실 상태 핸들링
+            if (gameState.status === 'waiting') {
+                document.getElementById('waitingScreen').style.display = 'flex';
+                
+                // 대기 명단 출력
+                const memberListItems = document.getElementById('memberListItems');
+                memberListItems.innerHTML = gameState.players.map((p, idx) => `${idx+1}. ${p.name}`).join('<br>');
+                
+                // 내가 방장(첫 유저)이면 시작 버튼 오픈
+                if (gameState.players[0] && gameState.players[0].id === myId) {
+                    document.getElementById('startBtn').style.style.display = 'block';
+                    document.getElementById('masterNotice').style.display = 'none';
+                }
+                return;
+            } else {
+                // 게임 중이면 마스크 제거
+                document.getElementById('waitingScreen').style.display = 'none';
             }
 
+            // 2. 턴 상태 스위칭 및 UI 비활성화 연동
+            if (currentTurnPlayer) {
+                if (currentTurnPlayer.id === myId) {
+                    isMyTurn = true;
+                    document.getElementById('turnMessage').innerText = "🔴 내 차례입니다! 타일을 조작하세요.";
+                    toggleControls(false); // 버튼들 활성화
+                } else {
+                    isMyTurn = false;
+                    document.getElementById('turnMessage').innerText = `• ${currentTurnPlayer.name}의 차례 대기 중...`;
+                    toggleControls(true); // 버튼들 비활성화
+                }
+            }
+
+            // 3. [룰 3] 플레이어 타일 현황판 동적 생성
+            const playerBoard = document.getElementById('playerBoard');
+            playerBoard.innerHTML = '';
+            gameState.players.forEach(p => {
+                const pCard = document.createElement('div');
+                pCard.className = `player-card ${currentTurnPlayer && currentTurnPlayer.id === p.id ? 'active-turn' : ''}`;
+                pCard.innerHTML = `${p.id === myId ? '★나' : p.name}: <span class="tile-count">${p.hand.length}장</span>`;
+                playerBoard.appendChild(pCard);
+            });
+
+            // 보드 그리기
             const boardContainer = document.getElementById('boardContainer');
             boardContainer.innerHTML = '';
             
@@ -119,12 +193,21 @@
             }
         });
 
+        function toggleControls(disable) {
+            document.getElementById('drawBtn').disabled = disable;
+            document.getElementById('groupBtn').disabled = disable;
+            document.getElementById('endTurnBtn').disabled = disable;
+        }
+
+        function startGame() {
+            socket.emit('gameStart');
+        }
+
         function sortHand(type) {
             currentSortType = type;
             applySort();
         }
 
-        // 오타 수정 완료 구역
         function applySort() {
             if (currentSortType === 'number') {
                 localHand.sort((a, b) => {
@@ -136,7 +219,7 @@
                 localHand.sort((a, b) => {
                     if (a.isJoker) return 1;
                     if (b.isJoker) return -1;
-                    return a.color.localeCompare(b.color) || a.number - b.number; // 괄호 오류 수정함
+                    return a.color.localeCompare(b.color) || a.number - b.number;
                 });
             }
             
@@ -152,24 +235,35 @@
             el.className = `tile ${tile.isJoker ? 'joker' : tile.color}`;
             el.innerText = tile.number;
             el.id = tile.id;
-            el.draggable = true;
             
-            el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text', tile.id); });
-            bindTouchEvents(el);
+            // [룰 2 클라이언트 가드] 내 턴일때만 드래그 속성 켬
+            if (isMyTurn) {
+                el.draggable = true;
+                el.style.opacity = "1";
+                el.style.cursor = "grab";
+                el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text', tile.id); });
+                bindTouchEvents(el);
+            } else {
+                el.draggable = false;
+                el.style.opacity = "0.7"; // 내 턴 아니면 살짝 반투명화
+                el.style.cursor = "not-allowed";
+            }
             return el;
         }
 
-        function allowDrop(e) { e.preventDefault(); }
+        function allowDrop(e) { if(isMyTurn) e.preventDefault(); }
 
         function dropToBoard(e, gIdx) {
             e.preventDefault();
             e.stopPropagation();
+            if(!isMyTurn) return;
             const tileId = e.dataTransfer.getData('text');
             socket.emit('moveTile', { tileId, toZone: 'board', groupIndex: gIdx });
         }
 
         function dropToHand(e) {
             e.preventDefault();
+            if(!isMyTurn) return;
             const tileId = e.dataTransfer.getData('text');
             socket.emit('moveTile', { tileId, toZone: 'hand' });
         }
@@ -178,6 +272,7 @@
             let startX, startY;
 
             tileEl.addEventListener('touchstart', function(e) {
+                if(!isMyTurn) return;
                 if (e.cancelable) e.preventDefault();
                 const touch = e.touches[0];
                 startX = touch.clientX;
@@ -186,12 +281,14 @@
             }, { passive: false });
 
             tileEl.addEventListener('touchmove', function(e) {
+                if(!isMyTurn) return;
                 if (e.cancelable) e.preventDefault();
                 const touch = e.touches[0];
                 tileEl.style.transform = `translate(${touch.clientX - startX}px, ${touch.clientY - startY}px)`;
             }, { passive: false });
 
             tileEl.addEventListener('touchend', function(e) {
+                if(!isMyTurn) return;
                 const touch = e.changedTouches[0];
                 tileEl.style.zIndex = '';
                 tileEl.style.transform = '';
