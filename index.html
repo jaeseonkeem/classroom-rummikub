@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
-    <title>실시간 교실 루미큐브 Pro (조커 포함)</title>
+    <title>실시간 분반 루미큐브 Pro</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { 
@@ -11,6 +11,7 @@
             overflow-x: hidden; touch-action: manipulation;
         }
         h1 { font-size: 20px; margin: 5px 0; }
+        .room-tag { background: #e74c3c; padding: 2px 8px; border-radius: 4px; font-size: 14px; }
         .controls { margin: 10px 0; display: flex; justify-content: center; flex-wrap: wrap; gap: 5px; }
         button {
             padding: 8px 14px; font-size: 14px; font-weight: bold; background: #e67e22; border: none; color: white; border-radius: 5px; cursor: pointer;
@@ -18,13 +19,11 @@
         button.blue-btn { background: #3498db; }
         button.green-btn { background: #2ecc71; }
         
-        /* 공용 보드 대형 컨테이너 */
         .board-container {
             background: #1a252f; border: 3px dashed #7f8c8d; min-height: 200px; margin: 10px 5px; padding: 15px;
             display: flex; flex-direction: column; gap: 15px; border-radius: 8px; box-sizing: border-box;
         }
         
-        /* 타일 묶음(조합)별 분리 구역 */
         .tile-group {
             background: #2c3e50; border: 2px solid #bdc3c7; min-height: 75px; padding: 8px;
             display: flex; flex-wrap: wrap; gap: 6px; border-radius: 6px; position: relative;
@@ -34,24 +33,18 @@
             font-size: 10px; font-weight: bold; padding: 1px 5px; border-radius: 3px;
         }
 
-        /* 내 손패 컨테이너 */
         .hand-container { 
             background: #2c3e50; border: 3px solid #ccc; min-height: 100px; margin: 10px 5px; padding: 10px; 
             display: flex; flex-wrap: wrap; gap: 8px; border-radius: 8px; box-sizing: border-box;
         }
         
-        /* 타일 스타일 */
         .tile { 
             width: 40px; height: 52px; background: #f5f6fa; border-radius: 5px; display: flex; 
             justify-content: center; align-items: center; font-size: 18px; font-weight: bold; color: black; 
             cursor: grab; position: relative; touch-action: none; user-select: none;
             box-shadow: 2px 3px 4px rgba(0,0,0,0.4);
         }
-        .red { color: #e74c3c; } 
-        .blue { color: #3498db; } 
-        .yellow { color: #f39c12; } 
-        .black { color: #2c3e50; }
-        /* 조커 카드 독자 디자인 */
+        .red { color: #e74c3c; } .blue { color: #3498db; } .yellow { color: #f39c12; } .black { color: #2c3e50; }
         .joker { color: #8e44ad; background: #f1f2f6; border: 2px solid #8e44ad; } 
         
         .turn-indicator { font-size: 15px; color: #2ecc71; margin: 5px; font-weight: bold; }
@@ -59,7 +52,8 @@
 </head>
 <body>
 
-    <h1>🧩 실시간 교실 루미큐브 Pro</h1>
+    <!-- 상단 타벨에 모둠 이름 동적 배치 -->
+    <h1>🧩 실시간 학급 루미큐브 <span id="roomTitle" class="room-tag">대기 중</span></h1>
     <div id="turnMessage" class="turn-indicator">참가 중...</div>
     
     <div class="controls">
@@ -70,10 +64,10 @@
         <button class="green-btn" onclick="socket.emit('endTurn')">턴 마치기</button>
     </div>
 
-    <h3>공용 보드 구역 (타일을 조합 세트 칸에 넣으세요)</h3>
+    <h3>공용 보드 구역</h3>
     <div id="boardContainer" class="board-container" ondragover="allowDrop(event)"></div>
 
-    <h3>내 손패 (보드의 카드를 여기로 다시 끌어올 수 있습니다)</h3>
+    <h3>내 손패</h3>
     <div id="hand" class="hand-container" ondragover="allowDrop(event)" ondrop="dropToHand(event)"></div>
 
     <script>
@@ -82,8 +76,19 @@
         let localHand = []; 
         let currentSortType = null;
 
+        // [멀티룸 입력 확장] 이름과 모둠 번호를 연속으로 받습니다.
         const userName = prompt("학급에서 사용할 이름을 입력하세요:", "학생" + Math.floor(Math.random()*100));
-        socket.emit('joinGame', userName);
+        let userRoom = prompt("참가할 모둠 번호를 입력하세요 (1~10):", "1");
+        
+        // 예외 입력 제어 (문자 입력 시 1번방 고정)
+        userRoom = parseInt(userRoom);
+        if (isNaN(userRoom) || userRoom < 1) userRoom = 1;
+
+        // 화면에 현재 모둠 번호 표기
+        document.getElementById('roomTitle').innerText = `${userRoom}모둠`;
+
+        // 서버에 이름과 방 번호를 객체로 묶어 전송
+        socket.emit('joinGame', { name: userName, roomId: userRoom });
 
         socket.on('connect', () => { myId = socket.id; });
 
@@ -123,7 +128,6 @@
             applySort();
         }
 
-        // 정렬 시 조커(isJoker)는 맨 뒤로 정렬되도록 로직 수정
         function applySort() {
             if (currentSortType === 'number') {
                 localHand.sort((a, b) => {
@@ -135,7 +139,7 @@
                 localHand.sort((a, b) => {
                     if (a.isJoker) return 1;
                     if (b.isJoker) return -1;
-                    return a.color.localeCompare(b.color) || a.number - b.number;
+                    return a.color.localeCompare(b.color) || a.number - b.number);
                 });
             }
             
@@ -148,7 +152,6 @@
 
         function createTileElement(tile) {
             const el = document.createElement('div');
-            // 조커일 경우 전용 클래스 부여
             el.className = `tile ${tile.isJoker ? 'joker' : tile.color}`;
             el.innerText = tile.number;
             el.id = tile.id;
