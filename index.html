@@ -52,7 +52,6 @@
 </head>
 <body>
 
-    <!-- 상단 타벨에 모둠 이름 동적 배치 -->
     <h1>🧩 실시간 학급 루미큐브 <span id="roomTitle" class="room-tag">대기 중</span></h1>
     <div id="turnMessage" class="turn-indicator">참가 중...</div>
     
@@ -76,18 +75,15 @@
         let localHand = []; 
         let currentSortType = null;
 
-        // [멀티룸 입력 확장] 이름과 모둠 번호를 연속으로 받습니다.
+        // 이름과 모둠 번호 입력창
         const userName = prompt("학급에서 사용할 이름을 입력하세요:", "학생" + Math.floor(Math.random()*100));
         let userRoom = prompt("참가할 모둠 번호를 입력하세요 (1~10):", "1");
         
-        // 예외 입력 제어 (문자 입력 시 1번방 고정)
         userRoom = parseInt(userRoom);
         if (isNaN(userRoom) || userRoom < 1) userRoom = 1;
 
-        // 화면에 현재 모둠 번호 표기
         document.getElementById('roomTitle').innerText = `${userRoom}모둠`;
 
-        // 서버에 이름과 방 번호를 객체로 묶어 전송
         socket.emit('joinGame', { name: userName, roomId: userRoom });
 
         socket.on('connect', () => { myId = socket.id; });
@@ -128,6 +124,7 @@
             applySort();
         }
 
+        // 오타 수정 완료 구역
         function applySort() {
             if (currentSortType === 'number') {
                 localHand.sort((a, b) => {
@@ -139,7 +136,7 @@
                 localHand.sort((a, b) => {
                     if (a.isJoker) return 1;
                     if (b.isJoker) return -1;
-                    return a.color.localeCompare(b.color) || a.number - b.number);
+                    return a.color.localeCompare(b.color) || a.number - b.number; // 괄호 오류 수정함
                 });
             }
             
