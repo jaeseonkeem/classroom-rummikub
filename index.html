@@ -42,14 +42,13 @@
         button.blue-btn { background: #3498db; }
         button.green-btn { background: #2ecc71; }
         
-        /* [개선] 공용 보드가 브라우저 중간에서 스크롤 되도록 유동 높이 설정 */
+        /* 공용 보드가 브라우저 중간에서 스크롤 되도록 유동 높이 설정 */
         .board-container {
             background: #1a252f; border: 3px dashed #7f8c8d; margin: 5px; padding: 10px;
             flex: 1; /* 남는 모든 세로 공간을 정확하게 채움 */
             min-height: 0; /* Flexbox 내에서 내부 스크롤이 정상 작동하기 위한 트리거 */
             overflow-y: auto; display: flex; flex-direction: row; flex-wrap: wrap; 
             align-content: flex-start; gap: 10px; border-radius: 8px; box-sizing: border-box;
-            /* 고정 제한 계산(max-height)을 유연한 flex 구조로 완전 대체하여 뷰포트 가둠 */
         }
         
         .tile-group {
@@ -65,7 +64,7 @@
             font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 3px;
         }
 
-        /* [개선] 손패 구역을 화면 최하단에 절대 밀려나지 않도록 강력 고정 및 노치 대응 */
+        /* 손패 구역을 화면 최하단에 절대 밀려나지 않도록 강력 고정 및 노치 대응 */
         .bottom-hand-panel {
             background: #1a252f; 
             padding: 10px 10px calc(10px + env(safe-area-inset-bottom)) 10px; /* iOS 홈바/인셋 하단 여백 대응 */
@@ -131,10 +130,8 @@
 </head>
 <body>
 
-    <!-- [개선: 자체 알림 메시지 컴포넌트] -->
     <div id="toast" class="toast-message">알림 메시지</div>
 
-    <!-- [개선: 안전가드 이어하기 확인용 모달] -->
     <div id="reconnectModal" class="modal-overlay" style="display: none;">
         <div class="modal-box">
             <h3>⏳ 이전 플레이 감지됨</h3>
@@ -144,7 +141,6 @@
         </div>
     </div>
 
-    <!-- [개선: 무한 분반 입력용 로그인 폼 모달] -->
     <div id="loginModal" class="modal-overlay" style="display: none;">
         <div class="modal-box">
             <h2>🧩 루미큐브 입장하기</h2>
@@ -158,7 +154,6 @@
         </div>
     </div>
 
-    <!-- [기존 대기실 모달] -->
     <div id="waitingScreen" class="modal-overlay" style="display: none;">
         <div class="modal-box">
             <h2>⏳ <span id="waitRoomTitle"></span> 대기실</h2>
@@ -344,6 +339,21 @@
             }
         });
 
+        function handleTileSelection(tileId) {
+            if (selectedTileId === tileId) {
+                clearSelection();
+            } else {
+                clearSelection();
+                selectedTileId = tileId;
+                const el = document.getElementById(tileId);
+                if (el) el.classList.add('selected');
+                
+                // 하이라이트 가이드라인 켜기
+                document.getElementById('hand').classList.add('highlight-dest');
+                document.querySelectorAll('.tile-group').forEach(el => el.classList.add('highlight-dest'));
+            }
+        }
+
         function clearSelection() {
             selectedTileId = null;
             document.querySelectorAll('.tile').forEach(el => el.classList.remove('selected'));
@@ -395,20 +405,10 @@
                 el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text', tile.id); });
                 bindTouchEvents(el);
                 
-                // [개선: 클릭/탭 이동 지원]
+                // 마우스 클릭 시 선택/해제 핸들러
                 el.addEventListener('click', (e) => {
                     e.stopPropagation(); // 부모 컨테이너 드롭 이벤트 발동 방지
-                    if (selectedTileId === tile.id) {
-                        clearSelection();
-                    } else {
-                        clearSelection();
-                        selectedTileId = tile.id;
-                        el.classList.add('selected');
-                        
-                        // 하이라이트 가이드라인 켜기
-                        document.getElementById('hand').classList.add('highlight-dest');
-                        document.querySelectorAll('.tile-group').forEach(el => el.classList.add('highlight-dest'));
-                    }
+                    handleTileSelection(tile.id);
                 });
             } else {
                 el.draggable = false;
@@ -435,28 +435,51 @@
             socket.emit('moveTile', { tileId, toZone: 'hand' });
         }
 
+        // [최종 해결] 모바일 터치이동 및 탭 분기 제어 로직 (삼성 인터넷 완벽 대응)
         function bindTouchEvents(tileEl) {
             let startX, startY;
+            let hasMoved = false;
+
             tileEl.addEventListener('touchstart', function(e) {
                 if(!isMyTurn) return;
-                if (e.cancelable) e.preventDefault();
+                // 단순 터치 시작 시에는 브라우저 스크롤을 막지 않아 탭 안정성을 확보
                 const touch = e.touches[0];
-                startX = touch.clientX; startY = touch.clientY;
+                startX = touch.clientX; 
+                startY = touch.clientY;
+                hasMoved = false;
                 tileEl.style.zIndex = 1000;
-            }, { passive: false });
+            }, { passive: true });
 
             tileEl.addEventListener('touchmove', function(e) {
                 if(!isMyTurn) return;
-                if (e.cancelable) e.preventDefault();
                 const touch = e.touches[0];
-                tileEl.style.transform = `translate(${touch.clientX - startX}px, ${touch.clientY - startY}px)`;
+                const dx = touch.clientX - startX;
+                const dy = touch.clientY - startY;
+
+                // 6px 이상의 움직임이 발생했을 때만 드래그로 판정하여 화면 이동 방지
+                if (Math.hypot(dx, dy) > 6) {
+                    hasMoved = true;
+                    if (e.cancelable) e.preventDefault(); 
+                }
+                tileEl.style.transform = `translate(${dx}px, ${dy}px)`;
             }, { passive: false });
 
             tileEl.addEventListener('touchend', function(e) {
                 if(!isMyTurn) return;
                 const touch = e.changedTouches[0];
-                tileEl.style.zIndex = ''; tileEl.style.transform = '';
-                const x = touch.clientX; const y = touch.clientY;
+                tileEl.style.zIndex = ''; 
+                tileEl.style.transform = '';
+
+                // 움직임이 없었다면 (순수 탭인 경우) 탭 이동 기능 활성화
+                if (!hasMoved) {
+                    e.preventDefault(); // 하단의 가상 클릭 마우스이벤트 차단 (중복 실행 버그 완치)
+                    handleTileSelection(tileEl.id);
+                    return;
+                }
+
+                // 드래그앤드롭 좌표 매핑 로직
+                const x = touch.clientX; 
+                const y = touch.clientY;
 
                 const handEl = document.getElementById('hand');
                 const handRect = handEl.getBoundingClientRect();
