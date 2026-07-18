@@ -154,7 +154,10 @@
 
     <div id="loginModal" class="modal-overlay" style="display: none;">
         <div class="modal-box">
-            <h2>🧩 루미큐브 입장하기</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #2c3e50; padding-bottom: 8px;">
+                <h2 style="font-size: 18px; margin: 0;">🧩 루미큐브 입장하기</h2>
+                <a href="manual.html" target="_blank" style="font-size: 12px; color: #3498db; text-decoration: none; font-weight: bold; background: #2c3e50; padding: 4px 10px; border-radius: 4px; border: 1px solid #3498db; display: inline-flex; align-items: center; gap: 4px;">📖 가이드</a>
+            </div>
             <label style="font-size: 13px; color: #bdc3c7;">이름 입력 (학급에서 쓰일 실명 권장)</label>
             <input type="text" id="inputName" class="form-input" placeholder="이름을 입력하세요">
             
@@ -403,12 +406,9 @@
         function createTileElement(tile) {
             const el = document.createElement('div');
             el.className = `tile ${tile.isJoker ? 'joker' : tile.color}`;
-            el.innerText = tile.number;
+            el.innerText = tile.isJoker ? '☺' : tile.number; // 조커일 때 이모티콘 ☺ 표시
             el.id = tile.id;
             
-            // 만약 클릭해 둔 타일이라면 클래스 복귀 적용
-            if (selectedTileId === tile.id) el.classList.add('selected');
-
             if (isMyTurn) {
                 el.draggable = true;
                 el.style.opacity = "1";
