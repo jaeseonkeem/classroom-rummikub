@@ -9,6 +9,7 @@ app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); }
 
 let rooms = {};
 
+// 106장 덱 빌드 함수 (조커 2장 다시 고정 반영)
 function initDeck() {
     const colors = ['red', 'blue', 'yellow', 'black'];
     let pool = [];
@@ -88,6 +89,7 @@ io.on('connection', (socket) => {
     let myName = null;
 
     socket.on('joinGame', ({ name, roomId }) => {
+        // [수정] 10번 제한 없이 룸 넘버 자유 보장
         const roomName = `room-${roomId}`;
         myRoom = roomName;
         myName = name;
@@ -97,17 +99,14 @@ io.on('connection', (socket) => {
 
         socket.join(roomName);
 
-        // [개선: 이어하기 처리] 같은 이름을 가진 기존 플레이어가 있는지 검사
         let existingPlayer = gameState.players.find(p => p.name === name);
 
         if (existingPlayer) {
-            // 화면이 꺼졌다가 다시 켜진 학생인 경우 -> 바뀐 소켓 ID만 교체하고 패는 유지!
             existingPlayer.id = socket.id;
-            console.log(`[재접속] ${name} 학생이 ${roomId}모둠으로 복귀했습니다.`);
+            console.log(`[Reconnection] ${name} -> Room: ${roomId}`);
         } else {
-            // 진짜 새로 들어온 학생인 경우
             if (gameState.status === 'playing' || gameState.players.length >= 4) {
-                socket.emit('errorMsg', '방에 입장할 수 없는 상태입니다.');
+                socket.emit('errorMsg', '게임이 이미 진행 중이거나 모둠이 꽉 찼습니다.');
                 return;
             }
             gameState.players.push({ id: socket.id, name: name, hand: [], isMeldDone: false, turnSubmittedTiles: [] });
@@ -145,12 +144,10 @@ io.on('connection', (socket) => {
         let currentPlayer = gameState.players[gameState.currentTurn];
         if (!currentPlayer || currentPlayer.id !== socket.id) return;
 
-        if (gameState.backupBoard) gameState.boardGroups = JSON.parse(gameState.backupBoard);
+        // [수정] 제출한 타일이 있을 경우 1장 뽑기 절대 불가 처리
         if (currentPlayer.turnSubmittedTiles.length > 0) {
-            currentPlayer.turnSubmittedTiles.forEach(tile => {
-                if(!currentPlayer.hand.some(t => t.id === tile.id)) currentPlayer.hand.push(tile);
-            });
-            currentPlayer.turnSubmittedTiles = [];
+            socket.emit('errorMsg', '이미 필드에 타일을 냈으므로 1장 뽑기를 진행할 수 없습니다! 낸 카드를 모두 회수하고 회차를 패스하세요.');
+            return;
         }
 
         if (gameState.tilePool.length > 0) currentPlayer.hand.push(gameState.tilePool.pop());
@@ -195,7 +192,7 @@ io.on('connection', (socket) => {
         if (!isComingFromHand && !currentPlayer.isMeldDone && toZone === 'hand') {
             let submittedIdx = currentPlayer.turnSubmittedTiles.findIndex(t => t.id === tileId);
             if (submittedIdx === -1) {
-                socket.emit('errorMsg', '첫 등록 전에는 기존 보드 타일을 가져올 수 없습니다!');
+                socket.emit('errorMsg', '첫 등록 완료 전에는 기존 보드 타일을 가져올 수 없습니다!');
                 gameState.boardGroups[parseInt(groupIndex) || 0].push(targetTile);
                 io.to(myRoom).emit('updateGame', gameState);
                 return;
@@ -225,12 +222,12 @@ io.on('connection', (socket) => {
         if (!currentPlayer || currentPlayer.id !== socket.id) return;
 
         if (currentPlayer.turnSubmittedTiles.length === 0) {
-            socket.emit('errorMsg', '타일을 내지 않았다면 [타일 1장 뽑기]를 이용해 주세요.');
+            socket.emit('errorMsg', '타일을 한 장도 내지 않았다면 [타일 1장 뽑기]로 턴을 마쳐야 합니다.');
             return;
         }
 
         if (!isBoardValid(gameState.boardGroups)) {
-            socket.emit('errorMsg', '❌ 유효하지 않은 세트가 보드에 존재합니다! 행동이 롤백됩니다.');
+            socket.emit('errorMsg', '❌ 보드 위에 완성되지 않은 조합 세트가 존재합니다! 이번 차례 행동이 강제 회수됩니다.');
             gameState.boardGroups = JSON.parse(gameState.backupBoard);
             currentPlayer.turnSubmittedTiles.forEach(tile => {
                 if(!currentPlayer.hand.some(t => t.id === tile.id)) currentPlayer.hand.push(tile);
@@ -244,7 +241,7 @@ io.on('connection', (socket) => {
             let scoreSum = 0;
             currentPlayer.turnSubmittedTiles.forEach(t => { scoreSum += t.isJoker ? 10 : t.number; });
             if (scoreSum < 30) {
-                socket.emit('errorMsg', `첫 등록의 총합이 30점 미만입니다. (${scoreSum}점)`);
+                socket.emit('errorMsg', `첫 등록은 바닥에 낸 타일 숫자의 총합이 30점 이상이어야 합니다. (현재 내신 점수: ${scoreSum}점)`);
                 gameState.boardGroups = JSON.parse(gameState.backupBoard);
                 currentPlayer.turnSubmittedTiles.forEach(tile => {
                     if(!currentPlayer.hand.some(t => t.id === tile.id)) currentPlayer.hand.push(tile);
@@ -261,7 +258,7 @@ io.on('connection', (socket) => {
         currentPlayer.turnSubmittedTiles = [];
         
         if (currentPlayer.hand.length === 0) {
-            gameState.status = 'waiting';
+            gameState.status = 'playing';
             io.to(myRoom).emit('victory', currentPlayer.name);
             delete rooms[myRoom];
             return;
@@ -271,15 +268,9 @@ io.on('connection', (socket) => {
         io.to(myRoom).emit('updateGame', gameState);
     });
 
-    // [개선] 화면이 꺼졌을 때 방에서 플레이어를 즉시 지우지 않고 대기 상태로 둠
     socket.on('disconnect', () => {
         if (myRoom && rooms[myRoom]) {
             let gameState = rooms[myRoom];
-            
-            // 학급 플레이 도중 화면 꺼짐 등으로 끊겼다면, 다른 생존자 유저들에게 알림을 보냄
-            console.log(`[연결 일시끊김] ${myName} 학생의 소켓이 탈착되었습니다.`);
-            
-            // 모든 플레이어가 완전히 다 나가버린 경우에만 방을 폭파
             let activeConnections = io.sockets.adapter.rooms.get(myRoom);
             if (!activeConnections || activeConnections.size === 0) {
                 delete rooms[myRoom];
