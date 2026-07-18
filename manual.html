@@ -216,20 +216,23 @@
             const display = document.getElementById('calcDisplay');
             const scoreLabel = document.getElementById('calcScore');
             const resultLabel = document.getElementById('calcResult');
-            const emptyNotice = document.getElementById('emptyNotice');
 
+            // 화면을 일단 완전히 비웁니다.
+            display.innerHTML = '';
+
+            // 타일이 하나도 없는 경우 대기 안내 문구를 동적으로 안전하게 생성하여 꼽아줍니다 (null 에러 원천 차단)
             if (currentTiles.length === 0) {
-                display.innerHTML = '';
+                const emptyNotice = document.createElement('span');
+                emptyNotice.id = 'emptyNotice';
+                emptyNotice.className = 'text-xs text-slate-500 self-center';
+                emptyNotice.innerText = '아래 숫자를 눌러 추가하세요.';
                 display.appendChild(emptyNotice);
-                emptyNotice.style.display = 'block';
+
                 scoreLabel.innerText = "0점";
                 resultLabel.innerText = "등록 불가 (30점 미만)";
                 resultLabel.className = "text-xs font-bold text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20";
                 return;
             }
-
-            emptyNotice.style.display = 'none';
-            display.innerHTML = '';
 
             let totalScore = 0;
             currentTiles.forEach((tile, index) => {
@@ -239,7 +242,8 @@
                 tileDiv.className = `w-7 h-10 rounded font-bold flex items-center justify-center text-xs tile-shadow cursor-pointer select-none transition-all hover:scale-95 hover:opacity-80 ${
                     tile.isJoker ? 'bg-purple-900 text-purple-200 border border-purple-500/50' : 'bg-white text-indigo-900'
                 }`;
-                tileDiv.innerText = tile.isJoker ? 'J' : tile.val;
+                // 인게임 디자인과 일관성을 위해 조커 표기를 J에서 스마일(☺)로 변경
+                tileDiv.innerText = tile.isJoker ? '☺' : tile.val;
                 tileDiv.title = "클릭하면 제거됩니다";
                 tileDiv.onclick = () => removeTile(index);
                 display.appendChild(tileDiv);
