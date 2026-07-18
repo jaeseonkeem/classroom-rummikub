@@ -9,7 +9,9 @@
         body { 
             font-family: sans-serif; background: #2c3e50; color: white; margin: 0; padding: 0;
             overflow: hidden; touch-action: manipulation;
-            display: flex; flex-direction: column; height: 100vh;
+            display: flex; flex-direction: column; 
+            height: 100vh;
+            height: 100dvh; /* 모바일 주소창 유동 높이 브라우저 오차 완벽 해결 */
         }
         
         /* 헤더 고정 영역 */
@@ -40,12 +42,14 @@
         button.blue-btn { background: #3498db; }
         button.green-btn { background: #2ecc71; }
         
-        /* [핵심] 공용 보드가 브라우저 중간에서 스크롤 되도록 유동 높이 설정 */
+        /* [개선] 공용 보드가 브라우저 중간에서 스크롤 되도록 유동 높이 설정 */
         .board-container {
             background: #1a252f; border: 3px dashed #7f8c8d; margin: 5px; padding: 10px;
-            flex-grow: 1; overflow-y: auto; display: flex; flex-direction: row; flex-wrap: wrap; 
+            flex: 1; /* 남는 모든 세로 공간을 정확하게 채움 */
+            min-height: 0; /* Flexbox 내에서 내부 스크롤이 정상 작동하기 위한 트리거 */
+            overflow-y: auto; display: flex; flex-direction: row; flex-wrap: wrap; 
             align-content: flex-start; gap: 10px; border-radius: 8px; box-sizing: border-box;
-            max-height: calc(100vh - 280px); /* 손패와 헤더 영역을 제외한 나머지 여백 할당 */
+            /* 고정 제한 계산(max-height)을 유연한 flex 구조로 완전 대체하여 뷰포트 가둠 */
         }
         
         .tile-group {
@@ -61,16 +65,24 @@
             font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 3px;
         }
 
-        /* [핵심] 손패 구역을 브라우저 맨 바닥에 고정 */
+        /* [개선] 손패 구역을 화면 최하단에 절대 밀려나지 않도록 강력 고정 및 노치 대응 */
         .bottom-hand-panel {
-            background: #1a252f; padding: 10px; border-top: 2px solid #bdc3c7; flex-shrink: 0;
+            background: #1a252f; 
+            padding: 10px 10px calc(10px + env(safe-area-inset-bottom)) 10px; /* iOS 홈바/인셋 하단 여백 대응 */
+            border-top: 2px solid #bdc3c7; 
+            flex-shrink: 0; /* 화면이 작아져도 절대로 이 영역은 찌그러지거나 숨지 않음 */
             z-index: 10;
         }
         .hand-container { 
-            background: #2c3e50; border: 2px dashed #95a5a6; min-height: 80px; padding: 8px; 
+            background: #2c3e50; border: 2px dashed #95a5a6; 
+            min-height: 80px; 
+            max-height: 140px; /* 모바일 가로모드나 태블릿에서 손패 구역이 과도하게 커지는 현상 방지 */
+            overflow-y: auto; /* 손패가 너무 많을 경우 손패 구역 내부에서 자체 스크롤 */
+            padding: 8px; 
             display: flex; flex-wrap: wrap; gap: 6px; border-radius: 8px; box-sizing: border-box;
             transition: box-shadow 0.2s;
         }
+        
         .hand-container.highlight-dest {
             box-shadow: 0 0 10px #2ecc71; border-color: #2ecc71;
         }
