@@ -186,16 +186,19 @@
     <!-- 헤더 컨트롤 패널 -->
     <div class="header-panel">
         <h1>🧩 실시간 학급 루미큐브 <span id="roomTitle" class="room-tag">대기 중</span></h1>
-        <div id="playerBoard" class="player-status-board"></div>
-        <div id="turnMessage" class="turn-indicator">참가 중...</div>
-        
-        <div class="controls">
-            <button id="drawBtn" class="green-btn" onclick="socket.emit('drawTile')">타일 1장 뽑기</button>
-            <button id="groupBtn" class="blue-btn" onclick="socket.emit('createNewGroup')">+ 새 조합 칸 만들기</button>
-            <button onclick="sortHand('number')">숫자별 정렬</button>
-            <button onclick="sortHand('color')">색상별 정렬</button>
-            <button id="endTurnBtn" class="green-btn" onclick="socket.emit('endTurn')">턴 마치기</button>
-        </div>
+    <div id="playerBoard" class="player-status-board"></div>
+    <div id="turnMessage" class="turn-indicator">참가 중...</div>
+    
+    <div class="controls">
+        <button id="drawBtn" class="green-btn" onclick="socket.emit('drawTile')">타일 1장 뽑기</button>
+        <button id="groupBtn" class="blue-btn" onclick="socket.emit('createNewGroup')">+ 새 조합 칸 만들기</button>
+        <button id="revertBtn" class="blue-btn" style="background: #95a5a6;" onclick="socket.emit('revertBoard')">↩ 보드 원상복구</button>
+        <button onclick="sortHand('number')">숫자별 정렬</button>
+        <button onclick="sortHand('color')">색상별 정렬</button>
+        <button id="endTurnBtn" class="green-btn" onclick="socket.emit('endTurn')">턴 마치기</button>
+    </div>
+
+    <h3>공용 보드 구역</h3>
     </div>
 
     <!-- 공용 보드 박스 구역 (중간 고정 내부스크롤) -->
@@ -293,15 +296,10 @@
             }
 
             if (currentTurnPlayer) {
-                if (currentTurnPlayer.name === myName) {
+                if (currentTurnPlayer.name === userName) {
                     isMyTurn = true;
                     document.getElementById('turnMessage').innerText = "🔴 내 차례입니다! 타일을 조작하세요.";
                     toggleControls(false);
-
-                    // [추적 룰 적용] 내 차례이고, 이미 타일을 단 한장이라도 냈다면 1장 뽑기 버튼만 강제 비활성화
-                    if (me && me.turnSubmittedTiles && me.turnSubmittedTiles.length > 0) {
-                        document.getElementById('drawBtn').disabled = true;
-                    }
                 } else {
                     isMyTurn = false;
                     document.getElementById('turnMessage').innerText = `• ${currentTurnPlayer.name}의 차례 대기 중...`;
@@ -380,6 +378,7 @@
         function toggleControls(disable) {
             document.getElementById('drawBtn').disabled = disable;
             document.getElementById('groupBtn').disabled = disable;
+            document.getElementById('revertBtn').disabled = disable;
             document.getElementById('endTurnBtn').disabled = disable;
         }
 
