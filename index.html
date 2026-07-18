@@ -120,10 +120,21 @@
         
         /* 커스텀 토스트 알림 메시지 */
         .toast-message {
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px);
-            background: #e74c3c; color: white; padding: 12px 20px; border-radius: 8px; font-weight: bold;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 9999; transition: transform 0.3s ease-out;
-            max-width: 90%; text-align: center;
+            position: fixed; 
+            top: 20px; 
+            left: 50%; 
+            /* 고정 픽셀 대신 자신의 높이(100%)와 상단 여백을 동적으로 계산하여 기종 불문 완전 은폐 */
+            transform: translateX(-50%) translateY(calc(-100% - 50px));
+            background: #e74c3c; 
+            color: white; 
+            padding: 12px 20px; 
+            border-radius: 8px; 
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
+            z-index: 9999; 
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* 살짝 튕기는 부드러운 애니메이션 효과 추가 */
+            max-width: 90%; 
+            text-align: center;
         }
         .toast-message.show { transform: translateX(-50%) translateY(0); }
     </style>
