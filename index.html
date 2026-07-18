@@ -77,7 +77,7 @@
             min-height: 80px; 
             max-height: 140px; /* 모바일 가로모드나 태블릿에서 손패 구역이 과도하게 커지는 현상 방지 */
             overflow-y: auto; /* 손패가 너무 많을 경우 손패 구역 내부에서 자체 스크롤 */
-            /* [최종 개선] 타일이 꽉 차도 터치 스크롤이 원활하도록 양 옆에 15px의 안전 터치 스크롤 전용 여백 확보 */
+            /* 타일이 꽉 차도 터치 스크롤이 원활하도록 양 옆에 15px의 안전 터치 스크롤 전용 여백 확보 */
             padding: 8px 15px; 
             display: flex; flex-wrap: wrap; gap: 6px; border-radius: 8px; box-sizing: border-box;
             transition: box-shadow 0.2s;
@@ -186,19 +186,19 @@
     <!-- 헤더 컨트롤 패널 -->
     <div class="header-panel">
         <h1>🧩 실시간 학급 루미큐브 <span id="roomTitle" class="room-tag">대기 중</span></h1>
-    <div id="playerBoard" class="player-status-board"></div>
-    <div id="turnMessage" class="turn-indicator">참가 중...</div>
-    
-    <div class="controls">
-        <button id="drawBtn" class="green-btn" onclick="socket.emit('drawTile')">타일 1장 뽑기</button>
-        <button id="groupBtn" class="blue-btn" onclick="socket.emit('createNewGroup')">+ 새 조합 칸 만들기</button>
-        <button id="revertBtn" class="blue-btn" style="background: #95a5a6;" onclick="socket.emit('revertBoard')">↩ 보드 원상복구</button>
-        <button onclick="sortHand('number')">숫자별 정렬</button>
-        <button onclick="sortHand('color')">색상별 정렬</button>
-        <button id="endTurnBtn" class="green-btn" onclick="socket.emit('endTurn')">턴 마치기</button>
-    </div>
+        <div id="playerBoard" class="player-status-board"></div>
+        <div id="turnMessage" class="turn-indicator">참가 중...</div>
+        
+        <div class="controls">
+            <button id="drawBtn" class="green-btn" onclick="socket.emit('drawTile')">타일 1장 뽑기</button>
+            <button id="groupBtn" class="blue-btn" onclick="socket.emit('createNewGroup')">+ 새 조합 칸 만들기</button>
+            <button id="revertBtn" class="blue-btn" style="background: #95a5a6;" onclick="socket.emit('revertBoard')">↩ 보드 원상복구</button>
+            <button onclick="sortHand('number')">숫자별 정렬</button>
+            <button onclick="sortHand('color')">색상별 정렬</button>
+            <button id="endTurnBtn" class="green-btn" onclick="socket.emit('endTurn')">턴 마치기</button>
+        </div>
 
-    <h3>공용 보드 구역</h3>
+        <h3 style="margin: 5px 0 0 0; text-align: left; font-size: 13px;">공용 보드 구역</h3>
     </div>
 
     <!-- 공용 보드 박스 구역 (중간 고정 내부스크롤) -->
@@ -216,6 +216,10 @@
         let localHand = []; 
         let currentSortType = null;
         let isMyTurn = false; 
+        
+        // [수정] 전역 스코프에 userName 및 userRoom 변수를 명확히 박아줌으로써 ReferenceError 원천 차단
+        let userName = null;
+        let userRoom = null;
         
         // 클릭-투-무브(Tap to Move) 제어 변수
         let selectedTileId = null; 
@@ -257,13 +261,17 @@
                 room = 1;
             }
 
-            sessionStorage.setItem('rummi_name', name);
-            sessionStorage.setItem('rummi_room', room);
+            userName = name;
+            userRoom = room;
+            sessionStorage.setItem('rummi_name', userName);
+            sessionStorage.setItem('rummi_room', userRoom);
             document.getElementById('loginModal').style.display = 'none';
-            connectToGame(name, room);
+            connectToGame(userName, userRoom);
         }
 
         function connectToGame(name, room) {
+            userName = name;
+            userRoom = room;
             document.getElementById('roomTitle').innerText = `${room}모둠`;
             document.getElementById('waitRoomTitle').innerText = `${room}모둠`;
             socket.emit('joinGame', { name: name, roomId: room });
@@ -277,8 +285,7 @@
         }
 
         socket.on('updateGame', (gameState) => {
-            const myName = sessionStorage.getItem('rummi_name');
-            const me = gameState.players.find(p => p.name === myName);
+            const me = gameState.players.find(p => p.name === userName);
             const currentTurnPlayer = gameState.players[gameState.currentTurn];
             
             if (gameState.status === 'waiting') {
@@ -286,7 +293,7 @@
                 const memberListItems = document.getElementById('memberListItems');
                 memberListItems.innerHTML = gameState.players.map((p, idx) => `${idx+1}. ${p.name}`).join('<br>');
                 
-                if (gameState.players[0] && gameState.players[0].name === myName) {
+                if (gameState.players[0] && gameState.players[0].name === userName) {
                     document.getElementById('startBtn').style.display = 'block';
                     document.getElementById('masterNotice').style.display = 'none';
                 }
@@ -296,6 +303,7 @@
             }
 
             if (currentTurnPlayer) {
+                // [오류 해결] 정의되어 있지 않던 'userName' 전역 값 비교가 완벽하게 돌아갑니다.
                 if (currentTurnPlayer.name === userName) {
                     isMyTurn = true;
                     document.getElementById('turnMessage').innerText = "🔴 내 차례입니다! 타일을 조작하세요.";
@@ -313,7 +321,7 @@
                 const pCard = document.createElement('div');
                 pCard.className = `player-card ${currentTurnPlayer && currentTurnPlayer.name === p.name ? 'active-turn' : ''}`;
                 const meldStatus = p.isMeldDone ? '<span class="meld-tag meld-true">등록 완료</span>' : '<span class="meld-tag meld-false">미등록</span>';
-                pCard.innerHTML = `${p.name === myName ? '★나' : p.name}: <span class="tile-count">${p.hand.length}장</span> ${meldStatus}`;
+                pCard.innerHTML = `${p.name === userName ? '★나' : p.name}: <span class="tile-count">${p.hand.length}장</span> ${meldStatus}`;
                 playerBoard.appendChild(pCard);
             });
 
@@ -447,7 +455,7 @@
             socket.emit('moveTile', { tileId, toZone: 'hand' });
         }
 
-        // [최종 해결] 모바일 터치이동 및 탭 분기 제어 로직 (삼성 인터넷 완벽 대응)
+        // 모바일 터치이동 및 탭 분기 제어 로직 (삼성 인터넷 완벽 대응)
         function bindTouchEvents(tileEl) {
             let startX, startY;
             let hasMoved = false;
