@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
-    <title>실시간 분반 루미큐브 Pro (레이아웃 개선)</title>
+    <title>실시간 분반 루미큐브 Pro (이어하기 지원)</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { 
@@ -31,13 +31,11 @@
         .meld-true { background: #3498db; color: white; }
         .meld-false { background: #e74c3c; color: white; }
 
-        /* [개선] 세로 배치에서 바둑판 모양 격자(Grid Flex) 배치로 변경 */
         .board-container {
             background: #1a252f; border: 3px dashed #7f8c8d; min-height: 250px; margin: 10px 5px; padding: 15px;
             display: flex; flex-direction: row; flex-wrap: wrap; align-content: flex-start; gap: 15px; border-radius: 8px; box-sizing: border-box;
         }
         
-        /* [개선] 가로 너비를 줘서 한 줄에 여러 개 배치되도록 조절 */
         .tile-group {
             background: #2c3e50; border: 2px solid #bdc3c7; min-height: 75px; min-width: 160px; max-width: 230px; padding: 12px 8px 8px 8px;
             display: flex; flex-wrap: wrap; gap: 6px; border-radius: 6px; position: relative; flex-grow: 1; box-sizing: border-box;
@@ -112,21 +110,50 @@
         let currentSortType = null;
         let isMyTurn = false; 
 
-        const userName = prompt("학급에서 사용할 이름을 입력하세요:", "학생" + Math.floor(Math.random()*100));
-        let userRoom = prompt("참가할 모둠 번호를 입력하세요 (1~10):", "1");
-        
-        userRoom = parseInt(userRoom);
-        if (isNaN(userRoom) || userRoom < 1) userRoom = 1;
+        // ====== [개선: 안전 가드가 포함된 로그인 로직] ======
+        let userName = sessionStorage.getItem('rummi_name');
+        let userRoom = sessionStorage.getItem('rummi_room');
+        let isReconnecting = false;
+
+        // 기존 기록이 있는 경우, 진짜 이어할 건지 학생에게 물어봅니다.
+        if (userName && userRoom) {
+            // 팝업 확인창 생성 (확인=true, 취소=false)
+            let confirmRejoin = confirm(`이전 플레이 기록이 있습니다.\n[${userRoom}모둠 / ${userName}]님으로 이어하시겠습니까?\n(새로운 수업/모둠이라면 '취소'를 누르세요)`);
+
+            if (confirmRejoin) {
+                isReconnecting = true;
+            } else {
+                // '취소'를 누르면 이전 반/모둠 기록을 완전히 지워버립니다.
+                sessionStorage.clear();
+                userName = null;
+                userRoom = null;
+            }
+        }
+
+        // 기록이 없거나 '취소'를 눌렀다면 새로 입력받습니다. (다음 반 수업 준비 완료)
+        if (!userName || !userRoom) {
+            userName = prompt("학급에서 사용할 이름을 입력하세요:", "학생" + Math.floor(Math.random()*100));
+            userRoom = prompt("참가할 모둠 번호를 입력하세요 (1~10):", "1");
+
+            userRoom = parseInt(userRoom);
+            if (isNaN(userRoom) || userRoom < 1) userRoom = 1;
+
+            // 새로 입력받은 값을 저장
+            sessionStorage.setItem('rummi_name', userName);
+            sessionStorage.setItem('rummi_room', userRoom);
+        }
 
         document.getElementById('roomTitle').innerText = `${userRoom}모둠`;
         document.getElementById('waitRoomTitle').innerText = `${userRoom}모둠`;
 
+        // 서버에 접속 신호 보내기
         socket.emit('joinGame', { name: userName, roomId: userRoom });
+        // ===================================================
 
         socket.on('connect', () => { myId = socket.id; });
 
         socket.on('updateGame', (gameState) => {
-            const me = gameState.players.find(p => p.id === myId);
+            const me = gameState.players.find(p => p.name === userName); // 소켓 id 대신 이름 기준으로 나를 추적
             const currentTurnPlayer = gameState.players[gameState.currentTurn];
             
             if (gameState.status === 'waiting') {
@@ -134,7 +161,7 @@
                 const memberListItems = document.getElementById('memberListItems');
                 memberListItems.innerHTML = gameState.players.map((p, idx) => `${idx+1}. ${p.name}`).join('<br>');
                 
-                if (gameState.players[0] && gameState.players[0].id === myId) {
+                if (gameState.players[0] && gameState.players[0].name === userName) {
                     document.getElementById('startBtn').style.display = 'block';
                     document.getElementById('masterNotice').style.display = 'none';
                 }
@@ -144,7 +171,7 @@
             }
 
             if (currentTurnPlayer) {
-                if (currentTurnPlayer.id === myId) {
+                if (currentTurnPlayer.name === userName) {
                     isMyTurn = true;
                     document.getElementById('turnMessage').innerText = "🔴 내 차례입니다! 타일을 조작하세요.";
                     toggleControls(false);
@@ -159,9 +186,9 @@
             playerBoard.innerHTML = '';
             gameState.players.forEach(p => {
                 const pCard = document.createElement('div');
-                pCard.className = `player-card ${currentTurnPlayer && currentTurnPlayer.id === p.id ? 'active-turn' : ''}`;
+                pCard.className = `player-card ${currentTurnPlayer && currentTurnPlayer.name === p.name ? 'active-turn' : ''}`;
                 const meldStatus = p.isMeldDone ? '<span class="meld-tag meld-true">등록 완료</span>' : '<span class="meld-tag meld-false">미등록</span>';
-                pCard.innerHTML = `${p.id === myId ? '★나' : p.name}: <span class="tile-count">${p.hand.length}장</span> ${meldStatus}`;
+                pCard.innerHTML = `${p.name === userName ? '★나' : p.name}: <span class="tile-count">${p.hand.length}장</span> ${meldStatus}`;
                 playerBoard.appendChild(pCard);
             });
 
@@ -202,7 +229,6 @@
                     return a.number - b.number || a.color.localeCompare(b.color);
                 });
             } else if (currentSortType === 'color') {
-                // [오타 수정 완료] 중복된 .color 객체 접근을 지워 정상 작동하게 만들었습니다.
                 localHand.sort((a, b) => {
                     if (a.isJoker) return 1;
                     if (b.isJoker) return -1;
@@ -294,7 +320,11 @@
         }
         
         socket.on('errorMsg', (msg) => { alert(msg); });
-        socket.on('victory', (winner) => { alert(`🎉 축하합니다! [${winner}] 학생이 손패를 모두 털어 최종 승리했습니다!`); window.location.reload(); });
+        socket.on('victory', (winner) => { 
+            alert(`🎉 축하합니다! [${winner}] 학생이 손패를 모두 털어 최종 승리했습니다!`); 
+            sessionStorage.clear(); // 승리 시 세션 초기화하여 다음 판 준비
+            window.location.reload(); 
+        });
     </script>
 </body>
 </html>
