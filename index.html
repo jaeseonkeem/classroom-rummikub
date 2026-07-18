@@ -192,7 +192,6 @@
         <div class="controls">
             <button id="drawBtn" class="green-btn" onclick="socket.emit('drawTile')">타일 1장 뽑기</button>
             <button id="groupBtn" class="blue-btn" onclick="socket.emit('createNewGroup')">+ 새 조합 칸 만들기</button>
-            <button id="revertBtn" class="blue-btn" style="background: #95a5a6;" onclick="socket.emit('revertBoard')">↩ 보드 원상복구</button>
             <button onclick="sortHand('number')">숫자별 정렬</button>
             <button onclick="sortHand('color')">색상별 정렬</button>
             <button id="endTurnBtn" class="green-btn" onclick="socket.emit('endTurn')">턴 마치기</button>
@@ -386,7 +385,6 @@
         function toggleControls(disable) {
             document.getElementById('drawBtn').disabled = disable;
             document.getElementById('groupBtn').disabled = disable;
-            document.getElementById('revertBtn').disabled = disable;
             document.getElementById('endTurnBtn').disabled = disable;
         }
 
